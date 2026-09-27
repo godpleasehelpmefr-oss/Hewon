@@ -336,7 +336,7 @@ function renderStrip() {
     })() : '';
   const fn = state.funnel;
   const fnPill = fn ? `<div class="pill"><b>🔎 SIGNAL FUNNEL (live hunt):</b> ${fn.tracked} tracked → ${fn.metrics} with live data${fn.liq == null ? '' : ' → ' + fn.liq + ' liquid → ' + fn.age + ' in the age window → ' + fn.mom + ' moving → ' + fn.spike + ' on a volume spike → <b class="' + (fn.armed ? 'g' : '') + '">' + fn.armed + ' ARMED</b>'}${(state.staged||[]).length ? ' · ' + state.staged.length + ' staged now' : ''}</div>` : '';
-  $('strip').innerHTML = ltPill + fnPill + `
+  $('strip').innerHTML = gfPulseLine(state) + ltPill + fnPill + `
     <div class="pill">This hour: <span class="big"><b>${lastHour.length}</b> calls</span> · <span class="big g">${lastHour.length ? Math.round(100 * h1 / lastHour.length) : 0}%</span> hit 2x+</div>
     <div class="pill">Today: <span class="big"><b>${today.length}</b> calls</span> · <span class="big g">${today.length ? Math.round(100 * d1 / today.length) : 0}%</span> hit 2x+</div>
     <div class="pill">All-time: <b>${total}</b> calls · <span class="big g"><b>${total ? Math.round(100 * x2 / total) : 0}%</b></span> 2x+ (${x2})</div>
@@ -523,6 +523,34 @@ function milestoneInfo(a, eq) {
   const span = next ? (next - prev) : 1;
   const frac = next ? Math.max(0, Math.min(1, (eq - prev) / span)) : 1;
   return { crossed, next, prev, frac, done: !next };
+}
+// How alive is the engine? The mirror carries its own log; the newest entry is its heartbeat.
+function gfPulse(st) {
+  const feed = Array.isArray(st.feed) ? st.feed : [];
+  const newest = feed.reduce((m, f) => (f && f.t > m ? f.t : m), 0);
+  const ageS = newest ? Math.floor((Date.now() - newest) / 1000) : null;
+  const calls = Array.isArray(st.calls) ? st.calls : [];
+  const lastCall = calls.reduce((m, c) => (c && c.callTime > m ? c.callTime : m), 0);
+  const sinceCallMin = lastCall ? Math.floor((Date.now() - lastCall) / 60000) : null;
+  const fn = st.funnel || {};
+  const armed = fn.armed == null ? null : fn.armed;
+  const quiet = sinceCallMin != null && sinceCallMin >= 60;
+  return { ageS, sinceCallMin, armed, quiet, tracked: fn.tracked == null ? Object.keys(st.watch || {}).length : fn.tracked };
+}
+// one honest line: engine state first, market second
+function gfPulseLine(st) {
+  const pl = gfPulse(st);
+  if (pl.ageS == null) return '<div class="pill"><b>ENGINE:</b> no heartbeat in the mirror yet</div>';
+  const beating = pl.ageS <= 300;
+  const age = pl.ageS < 90 ? pl.ageS + 's' : Math.round(pl.ageS / 60) + 'm';
+  const head = beating
+    ? '<span class="big g"><b>ENGINE ALIVE</b></span> — last scan ' + age + ' ago'
+    : '<span class="big r"><b>ENGINE PAUSED</b></span> — last scan ' + age + ' ago (round handover or GitHub delay; the mirror keeps the state and it resumes by itself)';
+  const market = pl.quiet
+    ? ' · <b>market quiet</b>: no qualifying pool in the last ' + pl.sinceCallMin + 'm — the engine is scanning, the rule simply has nothing to fire on'
+    : (pl.sinceCallMin != null ? ' · last signal ' + (pl.sinceCallMin < 1 ? 'just now' : pl.sinceCallMin + 'm ago') : '');
+  const armedTxt = pl.armed == null ? '' : ' · ' + pl.armed + ' armed now (' + pl.tracked + ' tracked)';
+  return '<div class="pill">' + head + market + armedTxt + '</div>';
 }
 function gfRunPill() {
   const lead = state.agents.slice().sort((x, y) => (y.equity || 0) - (x.equity || 0))[0] || {};
