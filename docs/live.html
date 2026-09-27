@@ -341,7 +341,7 @@ function renderStrip() {
       const done = (lt.done != null) ? lt.done : (lt.count >= lt.total);
       const verdict = lt.verdict || (done ? (hits >= lt.target ? 'PASS - we are good' : 'FAIL - work to do') : null);
       const cls = verdict ? (verdict.indexOf('PASS') === 0 ? 'testpass' : 'testfail') : '';
-      return `<div class="pill ${cls}"><b>LIVE TEST:</b> <b>${lt.count}/${lt.total}</b> signals tracked · <span class="big g"><b>${hits}</b></span> at 2x+ · target <b>${lt.target}/${lt.total}</b>${verdict ? ' · ' + (verdict.indexOf('PASS') === 0 ? 'PASS' : 'FAIL') + ' <b>' + esc(verdict) + '</b>' : ' · in progress'}</div>`;
+      return `<div class="pill ${cls}"><b>LIVE TEST:</b> <b>${lt.count}/${lt.total}</b> signals tracked · <span class="big g"><b>${hits}</b></span> at 2x+ · target <b>${lt.target}/${lt.total}</b>${verdict ? ' · ' + (verdict.indexOf('PASS') === 0 ? '<b class="g">' : '<b class="r">') + esc(verdict) + '</b>' : ' · in progress'}</div>`;
     })() : '';
   const fn = state.funnel;
   const fnPill = fn ? `<div class="pill"><b>🔎 SIGNAL FUNNEL (live hunt):</b> ${fn.tracked} tracked → ${fn.metrics} with live data${fn.liq == null ? '' : ' → ' + fn.liq + ' liquid → ' + fn.age + ' in the age window → ' + fn.mom + ' moving → ' + fn.spike + ' on a volume spike → <b class="' + (fn.armed ? 'g' : '') + '">' + fn.armed + ' ARMED</b>'}${(state.staged||[]).length ? ' · ' + state.staged.length + ' staged now' : ''}</div>` : '';
@@ -371,6 +371,12 @@ function renderFeed() {
   $('feedTbl').querySelector('tbody').innerHTML = list.slice(0, 80).map((c) => callRow(c, c.id === selectedCallId)).join('')
     || (state.calls.length ? '<tr><td colspan="7" class="empty">No calls match this filter/search.</td></tr>'
                             : '<tr><td colspan="7" class="empty">Scanning for the first call… (the engine needs ~60s of live price history + a 5m volume baseline per token)</td></tr>');
+}
+function agentShort(id) {
+  const s = String(id == null ? 'agent' : id);
+  if (/^momentum/i.test(s)) return 'MOM-1';
+  if (/^dip/i.test(s)) return 'DIP-1';
+  return s.toUpperCase();
 }
 function agentChipsFor(c) {
   const out = [];
@@ -595,7 +601,7 @@ function tradeStats(a) {
 }
 function renderRace() {
   const chk = (v) => (v == null ? '<span class="na">— need trades</span>' : v ? '<span class="ok">✓ yes</span>' : '<span class="no">✗ no</span>');
-  const agentLabel = (a, i) => a.id || (i === 0 ? 'MOM-1' : i === 1 ? 'DIP-1' : 'AGENT-' + (i + 1));
+  const agentLabel = (a, i) => agentShort(a.id || (i === 0 ? 'MOM-1' : i === 1 ? 'DIP-1' : 'AGENT-' + (i + 1)));
   $('agentCards').innerHTML = state.agents.map((a, i) => {
     const label = agentLabel(a, i);
     const safeLabel = safeCls(label);
@@ -636,7 +642,7 @@ function renderRace() {
   (state.archive || []).forEach((t) => all.push({ ...t, agent: t.agent + ' v1', archived: true }));
   all.sort((a, b) => b.sellTime - a.sellTime);
   $('tradeTbl').querySelector('tbody').innerHTML = all.slice(0, 12).map((t) => `<tr>
-    <td><span style="color:${hex(String(t.agent || 'agent').replace(' v1',''))};font-weight:700;${t.archived ? 'opacity:.6' : ''}">${esc(t.agent)}${t.archived ? ' <span style="color:#8a93a6">(archived)</span>' : ''}</span></td>
+    <td><span style="color:${hex(String(t.agent || 'agent').replace(' v1',''))};font-weight:700;${t.archived ? 'opacity:.6' : ''}">${esc(agentShort(t.agent))}${t.archived ? ' <span style="color:#8a93a6">(archived)</span>' : ''}</span></td>
     <td>${safeLink(t.dexlink) ? `<a href="${esc(safeLink(t.dexlink))}" target="_blank" rel="noopener">${esc(t.symbol)} ↗</a>` : esc(t.symbol)}</td>
     <td class="age">${fmtTime(t.buyTime)}<div class="sub">${t.holdSec}s</div></td>
     <td class="reason">${esc(clip(t.buyReason, 160))}</td>
@@ -658,11 +664,12 @@ function renderStaged() {
     const w = state.watch[s.token];
     const nowPx = w ? w.price : null;
     const left = Math.max(0, s.deadline - now());
-    const dist = nowPx ? (s.limit / nowPx - 1) * 100 : null;
+    // distance of the LIVE price from the staged limit; <= 0 means the price is AT or UNDER the limit
+    const dist = nowPx ? (nowPx / s.limit - 1) * 100 : null;
     return `<tr>
       <td><div class="tk">${icoEl(s)}<div><div class="sym">${esc(s.symbol)} <span class="badge live">STAGED</span></div><div class="nm"><a href="https://dexscreener.com/solana/${esc(s.pairAddress)}" target="_blank" style="color:var(--cyan)">${esc(s.symbol)} ↗</a></div></div></div></td>
       <td class="num">${fmtPrice(s.signalPrice)}</td>
-      <td class="num"><b>${fmtPrice(s.limit)}</b>${dist != null ? `<br><span class="${dist <= 0 ? 'x g' : 'sub'}">${dist <= 0 ? 'at/under limit' : dist.toFixed(2) + '% above limit'}</span>` : ''}</td>
+      <td class="num"><b>${fmtPrice(s.limit)}</b>${dist != null ? `<br><span class="${dist <= 0 ? 'x g' : 'sub'}">${dist <= 0 ? 'at/under limit — fill due' : '+' + dist.toFixed(2) + '% above limit (waiting for the dip)'}</span>` : ''}</td>
       <td class="num">${fmtPrice(nowPx)}</td>
       <td class="num ${left < 120000 ? 'x r' : ''}">${dur(left)}</td>
       <td class="sub">${esc(clip(s.baseReason, 180))}</td>
