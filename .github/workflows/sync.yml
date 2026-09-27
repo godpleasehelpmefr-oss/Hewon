@@ -16,7 +16,7 @@ on:
 
 concurrency:
   group: sync
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   run:
