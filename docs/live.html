@@ -579,7 +579,7 @@ function renderRace() {
         <span class="eq ${eq >= 1 ? 'up' : 'down'}">${fmt$(eq, 2)}</span>
         <span class="sub">cash ${fmt$(a.cash, 2)}</span>
         <span class="sub">P/L <span class="${eq - 1 >= 0 ? 'up' : 'down'}">${fmt$S(eq - 1)} (${fmtPct(eq - 1)})</span></span>
-        ${a.finishedAt ? `<span class="sub">crossed $2 in ${dur(a.finishedAt - state.startedAt)} - still compounding</span>` : ''}
+        ${a.finishedAt ? `<span class="sub">crossed $2 in ${dur(a.finishedAt - state.startedAt)} · still compounding</span>` : ''}
       </div>
       <div class="bar"><div style="width:${prog}%"></div></div>
       <div class="sub" style="font-size:11px;margin-bottom:2px">${mi.done ? 'running with no ceiling' : `next target $${mi.next} · ${(mi.frac * 100).toFixed(0)}% of the way from $${mi.prev}`}</div>
