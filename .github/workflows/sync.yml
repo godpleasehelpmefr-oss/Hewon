@@ -1,0 +1,60 @@
+name: sync
+
+# Anonymous runner. No product name, no repo name, no data, no strategy.
+# The job decrypts an opaque blob with a secret key, runs it, and re-publishes only
+# an encrypted blob. Output is discarded so logs stay empty.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: prep
+        env:
+          K: ${{ secrets.K }}
+        run: |
+          node -e "
+          const fs=require('fs'),crypto=require('crypto');
+          const b=JSON.parse(fs.readFileSync('engine.enc.json','utf8'));
+          const k=crypto.pbkdf2Sync(Buffer.from(process.env.K,'utf8'),Buffer.from(b.salt,'base64'),b.iters||600000,32,'sha256');
+          const buf=Buffer.from(b.ct,'base64'),iv=Buffer.from(b.iv,'base64');
+          const d=crypto.createDecipheriv('aes-256-gcm',k,iv);
+          d.setAuthTag(buf.subarray(buf.length-16));
+          const files=JSON.parse(Buffer.concat([d.update(buf.subarray(0,buf.length-16)),d.final()]).toString('utf8'));
+          fs.mkdirSync('w',{recursive:true});
+          for(const n of Object.keys(files)) fs.writeFileSync('w/'+n,files[n]);
+          console.log('ready');
+          "
+
+      - name: run
+        working-directory: w
+        env:
+          K: ${{ secrets.K }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PUBLIC_STATE_REPO: ${{ github.repository }}
+          STATE_FROM_MIRROR: '1'
+          PUBLIC_STATE_PASS: ${{ secrets.K }}
+          STATE_BRANCH: state
+          RUN_WINDOW_MIN: '340'
+        run: |
+          node server.js > run.log 2>&1 || true
+          echo "round ended"; tail -3 run.log 2>/dev/null || true
