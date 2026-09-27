@@ -108,6 +108,10 @@
   .sub { color:var(--dim); font-size:11.5px; }
   .bar { height:7px; background:#1a2233; border-radius:4px; margin:8px 0 5px; overflow:hidden; }
   .msrow { display:flex; flex-wrap:wrap; gap:5px; margin:2px 0 6px; }
+  .evlist { max-height:300px; overflow-y:auto; font-size:11.5px; }
+  .evlist .row { display:flex; gap:6px; padding:4px 2px; border-bottom:1px solid #141a26; }
+  .evlist .t { color:var(--dim); flex:0 0 74px; }
+  .evlist .tag { flex:0 0 52px; text-transform:uppercase; font-size:9.5px; color:var(--cyan); }
   .ms { font-size:10.5px; padding:1px 6px; border-radius:9px; border:1px solid var(--line); color:var(--dim); }
   .ms.hit { color:var(--green); border-color:#1d5c33; background:#0d2117; }
   .ms.next { color:var(--cyan); border-color:#12414f; }
@@ -216,6 +220,8 @@
   <h2 class="sect">◆ $1 → $2 AGENT RACE — two rule sets, paper fills (0.25% fee + slippage + latency)</h2>
   <div class="grid2" id="agentCards"></div>
 
+  <h2 class="sect">ENGINE LOG — what it is doing right now</h2>
+  <div class="panel"><div id="events" class="evlist"></div></div>
   <h2 class="sect">AGENT TRADES — why bought / why sold / profit or loss</h2>
   <div class="panel"><table class="trades" id="tradeTbl">
     <thead><tr><th>agent</th><th>coin</th><th>bought</th><th>why bought</th><th>sold</th><th>why sold</th><th class="num">entry</th><th class="num">exit</th><th class="num">P/L</th></tr></thead>
@@ -251,8 +257,13 @@ const $ = (id) => document.getElementById(id);
 const hex = (p) => (p === 'momentum' ? '#2dd4bf' : '#fbbf24');
 const fmt$ = (x, d) => (!isFinite(x) ? '--' : (x >= 0 ? '' : '-') + '$' + Math.abs(x).toFixed(d == null ? 4 : d));
 const fmt$S = (x) => (!isFinite(x) ? '--' : (x >= 0 ? '+' : '') + '$' + x.toFixed(2));
+// data can legitimately be incomplete (a call recorded while the price feed was down has
+// callPrice 0) - these never emit Infinity/NaN
+function xOf(c) { const cp = Number(c && c.callPrice); return cp > 0 ? Number(c.peakPrice) / cp : 0; }
+function pxRatio(nowPx, refPx) { const r = Number(refPx); return r > 0 ? Number(nowPx) / r : 1; }
+function safeNum(x, d) { return isFinite(Number(x)) ? Number(x) : (d == null ? 0 : d); }
 const clip = (t, n) => { if (t == null) return '--'; const v = String(t); return v.length > n ? v.slice(0, n - 1) + '...' : v; };
-const fmtPct = (x) => (x == null ? '—' : (x >= 0 ? '+' : '') + (x * 100).toFixed(2) + '%');
+const fmtPct = (x) => (!isFinite(x) ? '—' : (x >= 0 ? '+' : '') + (x * 100).toFixed(2) + '%');
 function fmtBig(x) {
   if (x == null || !isFinite(x)) return '—';
   if (x >= 1e9) return '$' + (x / 1e9).toFixed(2) + 'B';
@@ -263,13 +274,17 @@ function fmtBig(x) {
 const fmtPrice = (p) => (p == null ? '—' : p.toExponential(3));
 const fmtTime = (t) => new Date(t).toLocaleTimeString('en-GB', { hour12: false });
 function timeAgo(t) {
-  const s = Math.max(0, Math.floor((now() - t) / 1000));
+  if (!isFinite(Number(t))) return '--';
+  const s = Math.max(0, Math.floor((now() - Number(t)) / 1000));
   if (s < 60) return s + 's';
   if (s < 3600) return Math.floor(s / 60) + 'm';
   if (s < 86400) return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
   return Math.floor(s / 86400) + 'd ' + Math.floor((s % 86400) / 3600) + 'h';
 }
-function dur(ms) { const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return (h ? h + 'h ' : '') + m + 'm ' + (s % 60) + 's'; }
+function dur(ms) { if (!isFinite(Number(ms)) || Number(ms) < 0) return '--'; const s = Math.floor(Number(ms) / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return (h ? h + 'h ' : '') + m + 'm ' + (s % 60) + 's'; }
+// data-driven class names and links must never be trusted as markup
+function safeCls(x) { return String(x == null ? '' : x).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24); }
+const safeLink = (u) => (/^https?:\/\//i.test(String(u == null ? '' : u)) ? String(u) : null);
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 // ================= RENDER =================
@@ -278,7 +293,7 @@ function icoEl(c) {
   return `<div class="ico">${esc((c.symbol || '?')[0].toUpperCase())}</div>`;
 }
 function callRow(c, sel) {
-  const xNow = c.lastPrice / c.callPrice, xPeak = c.peakPrice / c.callPrice;
+  const xNow = pxRatio(c.lastPrice, c.callPrice), xPeak = xOf(c);
   const stale = now() - c.lastUpdate > 600000;
   let badge = '';
   if (stale) badge = '<span class="badge stale">stale</span>';
@@ -286,7 +301,7 @@ function callRow(c, sel) {
   else if (xPeak >= 2) badge = '<span class="badge x2">2x+</span>';
   else if (!stale) badge = '<span class="badge live">LIVE</span>';
   const xCls = (x) => (x >= 10 ? 'g' : x >= 2 ? 'c' : x >= 1 ? '' : 'r');
-  return `<tr class="call ${sel ? 'sel' : ''}" onclick="selectCall('${c.id}')">
+  return `<tr class="call ${sel ? 'sel' : ''}" onclick="selectCall('${esc(String(c.id))}')">
     <td><div class="tk">${icoEl(c)}<div><div class="sym">${esc(c.symbol)}${badge}${c.testBatch ? ' <span class="badge testb">TEST</span>' : ''}</div><div class="nm" title="${esc(c.token)}">${esc(c.name)}</div></div></div></td>
     <td class="age">${timeAgo(c.callTime)}</td>
     <td class="num">${fmtBig(c.mcap)}</td>
@@ -297,23 +312,23 @@ function callRow(c, sel) {
   </tr>`;
 }
 function renderStrip() {
-  const calls = state.calls;
+  const calls = state.calls || [];
   const total = calls.length;
-  const x2 = calls.filter((c) => c.peakPrice / c.callPrice >= 2).length;
-  const x5 = calls.filter((c) => c.peakPrice / c.callPrice >= 5).length;
-  const x10 = calls.filter((c) => c.peakPrice / c.callPrice >= 10).length;
-  const bestC = calls.reduce((b, c) => (c.peakPrice / c.callPrice > (b ? b.peakPrice / b.callPrice : 0) ? c : b), null);
+  const x2 = calls.filter((c) => xOf(c) >= 2).length;
+  const x5 = calls.filter((c) => xOf(c) >= 5).length;
+  const x10 = calls.filter((c) => xOf(c) >= 10).length;
+  const bestC = calls.reduce((b, c) => (xOf(c) > (b ? xOf(b) : 0) ? c : b), null);
   const vol = calls.reduce((s, c) => s + (c.vol5m || 0), 0);
   const winners = state.agents.filter((a) => a.finishedAt);
   // gembot-style windowed hit rates
   const lastHour = calls.filter((c) => now() - c.callTime < 3600000);
-  const h1 = lastHour.filter((c) => c.peakPrice / c.callPrice >= 2).length;
+  const h1 = lastHour.filter((c) => xOf(c) >= 2).length;
   const today = calls.filter((c) => now() - c.callTime < 86400000);
-  const d1 = today.filter((c) => c.peakPrice / c.callPrice >= 2).length;
+  const d1 = today.filter((c) => xOf(c) >= 2).length;
   const lt = state.liveTest;
   const ltPill = (lt && (lt.active || lt.count > 0)) ?
     (() => {
-      const hits = (lt.hits != null) ? lt.hits : calls.filter((c) => c.testBatch && c.callPrice && c.peakPrice / c.callPrice >= 2).length;
+      const hits = (lt.hits != null) ? lt.hits : calls.filter((c) => c.testBatch && c.callPrice && xOf(c) >= 2).length;
       const done = (lt.done != null) ? lt.done : (lt.count >= lt.total);
       const verdict = lt.verdict || (done ? (hits >= lt.target ? 'PASS - we are good' : 'FAIL - work to do') : null);
       const cls = verdict ? (verdict.indexOf('PASS') === 0 ? 'testpass' : 'testfail') : '';
@@ -326,22 +341,22 @@ function renderStrip() {
     <div class="pill">Today: <span class="big"><b>${today.length}</b> calls</span> · <span class="big g">${today.length ? Math.round(100 * d1 / today.length) : 0}%</span> hit 2x+</div>
     <div class="pill">All-time: <b>${total}</b> calls · <span class="big g"><b>${total ? Math.round(100 * x2 / total) : 0}%</b></span> 2x+ (${x2})</div>
     <div class="pill">5x+: <span class="big c"><b>${x5}</b></span> · 10x+: <b>${x10}</b></div>
-    <div class="pill">Top call: <span class="big a"><b>${bestC ? esc(bestC.symbol) + ' ' + (bestC.peakPrice / bestC.callPrice).toFixed(1) + 'x' : '—'}</b></span></div>
+    <div class="pill">Top call: <span class="big a"><b>${bestC ? esc(bestC.symbol) + ' ' + (xOf(bestC)).toFixed(1) + 'x' : '—'}</b></span></div>
     <div class="pill">Tracked 5m vol: <b>${fmtBig(vol)}</b></div>
     <div class="pill">${gfRunPill()}</div>`;
 }
 function renderFeed() {
   const q = ($('q').value || '').trim().toLowerCase();
-  let list = state.calls.filter((c) => {
-    if (feedFilter === 'x2' && c.peakPrice / c.callPrice < 2) return false;
-    if (feedFilter === 'x10' && c.peakPrice / c.callPrice < 10) return false;
+  let list = (state.calls || []).filter((c) => {
+    if (feedFilter === 'x2' && xOf(c) < 2) return false;
+    if (feedFilter === 'x10' && xOf(c) < 10) return false;
     if (feedFilter === 'lt1' && !(c.mcap > 0 && c.mcap < 1e6)) return false;
     if (feedFilter === 'gt1' && !(c.mcap >= 1e6)) return false;
     if (q) { const hay = (c.symbol + ' ' + c.name + ' ' + c.token).toLowerCase(); if (!hay.includes(q)) return false; }
     return true;
   });
   if (sortMode === 'newest') list.sort((a, b) => b.callTime - a.callTime);
-  if (sortMode === 'peak') list.sort((a, b) => b.peakPrice / b.callPrice - a.peakPrice / a.callPrice);
+  if (sortMode === 'peak') list.sort((a, b) => xOf(b) - xOf(a));
   if (sortMode === 'mcap') list.sort((a, b) => b.mcap - a.mcap);
   if (sortMode === 'vol') list.sort((a, b) => b.vol5m - a.vol5m);
   $('feedTbl').querySelector('tbody').innerHTML = list.slice(0, 80).map((c) => callRow(c, c.id === selectedCallId)).join('')
@@ -352,7 +367,7 @@ function agentChipsFor(c) {
   const out = [];
   for (const a of state.agents) {
     const pos = a.position;
-    if (pos && pos.dexlink === c.dexlink) out.push(`<div class="achip">${esc(a.name || a.id || "agent")}: <b>holding now</b> (uP/L <span class="${(pos.lastPrice / pos.entryPrice - 1) >= 0 ? 'g' : 'r'}">${fmtPct(pos.lastPrice / pos.entryPrice - 1)}</span>)</div>`);
+    if (pos && pos.dexlink === c.dexlink) out.push(`<div class="achip">${esc(a.name || a.id || "agent")}: <b>holding now</b> (uP/L <span class="${(pxRatio(pos.lastPrice, pos.entryPrice) - 1) >= 0 ? 'g' : 'r'}">${fmtPct(pxRatio(pos.lastPrice, pos.entryPrice) - 1)}</span>)</div>`);
     for (const t of a.trades) if (t.dexlink === c.dexlink) {
       out.push(`<div class="achip">${esc(a.name || a.id || "agent")}: bought ${fmtPrice(t.entry)} → sold ${fmtPrice(t.exit)} · <span class="${t.pnl >= 0 ? 'g' : 'r'}">${fmt$(t.pnl)} (${fmtPct(t.pnlPct)})</span></div>`);
     }
@@ -364,13 +379,13 @@ function renderDetail() {
   if (!c) { $('detail').innerHTML = '<div class="empty">No calls yet — select one from the feed.</div>'; return; }
   if (!c.history.length) selectedCallId = c.id;
   else selectedCallId = c.id;
-  const xNow = c.lastPrice / c.callPrice, xPeak = c.peakPrice / c.callPrice;
+  const xNow = pxRatio(c.lastPrice, c.callPrice), xPeak = xOf(c);
   const w = state.watch[c.token];
   const mom1 = w ? w.mom60 : null, mom5 = w ? w.mom5m : null;
   $('detail').innerHTML = `
     <div class="dhead">${icoEl(c)}
       <div><div class="nm">${esc(c.symbol)} <span class="sub">Solana</span></div><div class="full" title="${esc(c.token)}">${esc(c.name)} · ${esc(c.token.slice(0, 8))}…${esc(c.token.slice(-6))}</div></div>
-      <a href="${c.dexlink}" target="_blank" rel="noopener" style="margin-left:auto;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:11.5px;">DEXSCREENER ↗</a>
+      ${safeLink(c.dexlink) ? `<a href="${esc(safeLink(c.dexlink))}" target="_blank" rel="noopener" style="margin-left:auto;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:11.5px;">DEXSCREENER ↗</a>` : `<span class="sub" style="margin-left:auto">no pair link</span>`}
     </div>
     <div class="sub" style="margin-top:8px">Called at <b style="color:#fff">${fmtTime(c.callTime)}</b> (${timeAgo(c.callTime)} ago) @ ${fmtPrice(c.callPrice)}</div>
     <div class="dgrid">
@@ -456,12 +471,12 @@ function drawChart(c) {
   ctx.setLineDash([3, 4]); ctx.strokeStyle = '#fbbf24'; ctx.beginPath(); ctx.moveTo(padL, yAth); ctx.lineTo(W - padR, yAth); ctx.stroke();
   ctx.setLineDash([]);
   ctx.fillStyle = '#fbbf24';
-  ctx.fillText('ATH ' + c.peakPrice.toExponential(2) + ' (' + (c.peakPrice / c.callPrice).toFixed(1) + 'x)', padL + 4, yAth - 4);
+  ctx.fillText('ATH ' + c.peakPrice.toExponential(2) + ' (' + (xOf(c)).toFixed(1) + 'x)', padL + 4, yAth - 4);
   const yLast = Y(c.lastPrice);
   ctx.fillStyle = c.lastPrice >= c.callPrice ? '#123524' : '#3d1418';
   ctx.fillRect(W - padR + 2, yLast - 8, padR - 6, 16);
   ctx.fillStyle = c.lastPrice >= c.callPrice ? '#22c55e' : '#ef4444';
-  ctx.fillText(c.lastPrice.toExponential(2) + ' ' + (c.lastPrice / c.callPrice).toFixed(1) + 'x', W - padR + 6, yLast + 3);
+  ctx.fillText(c.lastPrice.toExponential(2) + ' ' + (pxRatio(c.lastPrice, c.callPrice)).toFixed(1) + 'x', W - padR + 6, yLast + 3);
 }
 function streaks(arr) { const res = []; let c = 0; for (const v of arr) { if (v) { c++; res.push(c); } else c = 0; } return res; }
 const avg = (arr) => (arr.length ? arr.reduce((x, y) => x + y, 0) / arr.length : 0);
@@ -472,13 +487,13 @@ const max0 = (arr) => (arr.length ? Math.max(...arr) : 0);
 // instant that fall inside a hold were recorded as position value only (cash missing).
 const GF_EQ_FIX_MS = 1790528928000;
 function gfEquityCurve(a) {
-  const pts = a.eqHist || [];
+  const pts = Array.isArray(a.eqHist) ? a.eqHist : [];
   if (!pts.length) return { maxDD: a.maxDD || 0, peak: a.peakEq || 0, last: 0, corrected: false, points: 0 };
   const pos = a.position;
   const trades = (a.trades || []).slice().sort((x, y) => (x.buyTime || 0) - (y.buyTime || 0));
   const realizedBefore = (t) => trades.filter((x) => (x.sellTime || 0) <= t).reduce((s2, x) => s2 + (x.pnl || 0), 0);
   const openTradeAt = (t) => trades.find((x) => (x.buyTime || 0) <= t && t < (x.sellTime || 0));
-  const cashAfterBuy = (entry, cost) => 1 + realizedBefore(entry) - (cost || 0);
+  const cashAfterBuy = (entry, cost) => 1 + safeNum(realizedBefore(entry), 0) - safeNum(cost, 0);
   let peak = 0, maxDD = 0, last = 0, corrected = 0;
   for (const pt of pts) {
     let eq = pt.eq;
@@ -520,7 +535,7 @@ function milestoneChips(a, eq) {
   return '<div class="msrow">' + hit + nx + '</div>';
 }
 function tradeStats(a) {
-  const t = a.trades;
+  const t = Array.isArray(a.trades) ? a.trades : [];
   const wins = t.filter((x) => x.pnl > 0), losses = t.filter((x) => x.pnl <= 0);
   const winSum = wins.reduce((s, x) => s + x.pnl, 0);
   const lossSum = Math.abs(losses.reduce((s, x) => s + x.pnl, 0));
@@ -530,7 +545,7 @@ function tradeStats(a) {
     avgWin: wins.length ? winSum / wins.length : 0, avgLoss: losses.length ? -lossSum / losses.length : 0,
     avgWinStreak: avg(ws), avgLossStreak: avg(ls),
     profitFactor: lossSum > 0 ? winSum / lossSum : (winSum > 0 ? 99 : 0),
-    maxDD: (a.eqHist && a.eqHist.length ? gfEquityCurve(a).maxDD : (a.maxDD || 0)),
+    maxDD: safeNum(a.eqHist && a.eqHist.length ? gfEquityCurve(a).maxDD : a.maxDD, 0),
     checks: {
       avgWinVsAvgLoss: t.length >= 2 ? (wins.length ? winSum / wins.length : 0) > (losses.length ? lossSum / losses.length : 0) : null,
       streakConsistency: t.length >= 4 ? avg(ws) >= avg(ls) : null,
@@ -542,16 +557,17 @@ function renderRace() {
   const agentLabel = (a, i) => a.id || (i === 0 ? 'MOM-1' : i === 1 ? 'DIP-1' : 'AGENT-' + (i + 1));
   $('agentCards').innerHTML = state.agents.map((a, i) => {
     const label = agentLabel(a, i);
+    const safeLabel = safeCls(label);
     const p = a.position, st = tradeStats(a);
     const eq = (typeof a.equity === 'number' && isFinite(a.equity)) ? a.equity : (Number(a.cash) || 0) + (Number(a.posVal) || (p && p.qty && p.lastPrice ? p.qty * p.lastPrice : 0));
     const mi = milestoneInfo(a, eq);
     const prog = Math.max(0, Math.min(100, mi.frac * 100));
     let posHtml = '';
-    if (p) posHtml = `<div class="pos">HOLDING <b>${esc(p.symbol)}</b> <a href="${p.dexlink}" target="_blank" rel="noopener">[dex]</a>
+    if (p) posHtml = `<div class="pos">HOLDING <b>${esc(p.symbol)}</b> ${safeLink(p.dexlink) ? `<a href="${esc(safeLink(p.dexlink))}" target="_blank" rel="noopener">[dex]</a>` : ""}
       entry ${fmtPrice(p.entryPrice)} @ ${fmtTime(p.entryTime)} · now ${fmtPrice(p.lastPrice)}
-      · uP/L <span class="${(p.lastPrice / p.entryPrice - 1) >= 0 ? 'up' : 'down'}">${fmtPct(p.lastPrice / p.entryPrice - 1)}</span> · held ${Math.round((now() - p.entryTime) / 1000)}s${p.exiting ? ' · <b>exiting…</b>' : ''}
+      · uP/L <span class="${(pxRatio(p.lastPrice, p.entryPrice) - 1) >= 0 ? 'up' : 'down'}">${fmtPct(pxRatio(p.lastPrice, p.entryPrice) - 1)}</span> · held ${Math.round((now() - p.entryTime) / 1000)}s${p.exiting ? ' · <b>exiting…</b>' : ''}
       <div class="why">${esc(p.entryReason)}</div></div>`;
-    return `<div class="card ${label}">
+    return `<div class="card ${safeCls(label)}">
       <span class="tag">${esc(label)}</span>
       <h3>${esc(a.name || label)}</h3>
       ${a.desc ? `<p class="desc">${esc(a.desc)}</p>` : ''}
@@ -568,19 +584,19 @@ function renderRace() {
         <tr><th>trades</th><td>${st.n}</td><th>win rate</th><td>${st.n ? st.winRate.toFixed(0) + '%' : '—'}</td></tr>
         <tr><th>avg win</th><td class="up">${st.n ? fmt$(st.avgWin) : '—'}</td><th>avg loss</th><td class="down">${st.n ? fmt$(st.avgLoss) : '—'}</td></tr>
         <tr><th>avg win streak</th><td>${st.n ? st.avgWinStreak.toFixed(1) : '—'}</td><th>avg loss streak</th><td>${st.n ? st.avgLossStreak.toFixed(1) : '—'}</td></tr>
-        <tr><th>profit factor</th><td>${st.n ? st.profitFactor.toFixed(2) : '—'}</td><th>max DD</th><td>${(st.maxDD * 100).toFixed(1)}%</td></tr>
+        <tr><th>profit factor</th><td>${st.n ? st.profitFactor.toFixed(2) : '—'}</td><th>max DD</th><td>${(safeNum(st.maxDD, 0) * 100).toFixed(1)}%</td></tr>
       </table>
       <div class="chk">avg win &gt; avg loss: ${chk(st.checks.avgWinVsAvgLoss)} · win streaks consistent: ${chk(st.checks.streakConsistency)}</div>
       ${posHtml}
     </div>`;
   }).join('');
   const all = [];
-  state.agents.forEach((a) => a.trades.forEach((t) => all.push(t)));
+  state.agents.forEach((a) => (Array.isArray(a.trades) ? a.trades : []).forEach((t) => all.push(t)));
   (state.archive || []).forEach((t) => all.push({ ...t, agent: t.agent + ' v1', archived: true }));
   all.sort((a, b) => b.sellTime - a.sellTime);
   $('tradeTbl').querySelector('tbody').innerHTML = all.slice(0, 12).map((t) => `<tr>
-    <td><span style="color:${hex(t.agent.replace(' v1',''))};font-weight:700;${t.archived ? 'opacity:.6' : ''}">${t.agent}${t.archived ? ' <span style="color:#8a93a6">(archived)</span>' : ''}</span></td>
-    <td><a href="${t.dexlink}" target="_blank" rel="noopener">${esc(t.symbol)} ↗</a></td>
+    <td><span style="color:${hex(String(t.agent || 'agent').replace(' v1',''))};font-weight:700;${t.archived ? 'opacity:.6' : ''}">${esc(t.agent)}${t.archived ? ' <span style="color:#8a93a6">(archived)</span>' : ''}</span></td>
+    <td>${safeLink(t.dexlink) ? `<a href="${esc(safeLink(t.dexlink))}" target="_blank" rel="noopener">${esc(t.symbol)} ↗</a>` : esc(t.symbol)}</td>
     <td class="age">${fmtTime(t.buyTime)}<div class="sub">${t.holdSec}s</div></td>
     <td class="reason">${esc(clip(t.buyReason, 160))}</td>
     <td class="age">${fmtTime(t.sellTime)}</td>
@@ -896,7 +912,7 @@ window.addEventListener('resize', () => {
 });
 
 // ================= MAIN =================
-let pollMs = 60000;
+let pollMs = 120000;
 (async function pollLoop(){
   try { await poll(); } catch (e) {}
   pollMs = (liveHost === false) ? 120000 : 15000;
