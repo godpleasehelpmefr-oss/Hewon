@@ -511,18 +511,22 @@ function gfEquityCurve(a) {
 }
 const MILESTONES = [2, 3, 4, 5, 7.5, 10, 15, 20, 30, 50, 75, 100, 150, 200];
 // compounding is open-ended: the next level is always the target, $2 is just the first one
-function nextMilestone(eq) { return MILESTONES.find((m) => m > (Number(eq) || 0)) || null; }
+function nextMilestone(eq, crossed) {
+  const done = (crossed || []).map((m) => (m && m.x != null ? m.x : m));
+  const left = MILESTONES.filter((m) => done.indexOf(m) < 0);
+  return left.find((m) => m > (Number(eq) || 0)) || left[0] || null;
+}
 function milestoneInfo(a, eq) {
   const crossed = (a.milestones || []).slice();
-  const next = nextMilestone(eq);
-  const prev = crossed.length ? crossed[crossed.length - 1].x : 1;
+  const next = nextMilestone(eq, crossed);
+  const prev = crossed.length ? Math.max.apply(null, crossed.map((m) => m.x)) : 1;
   const span = next ? (next - prev) : 1;
   const frac = next ? Math.max(0, Math.min(1, (eq - prev) / span)) : 1;
   return { crossed, next, prev, frac, done: !next };
 }
 function gfRunPill() {
   const lead = state.agents.slice().sort((x, y) => (y.equity || 0) - (x.equity || 0))[0] || {};
-  const nm = nextMilestone(lead.equity);
+  const nm = nextMilestone(lead.equity, lead.milestones);
   const passed = (lead.milestones || []).length;
   return '<div class="pill">Run: <b>' + dur(now() - state.startedAt) + '</b> elapsed · leader <span class="big g"><b>'
     + esc(lead.name || lead.id || 'agent') + ' ' + fmt$(lead.equity, 2) + '</b></span> · next <b>$' + (nm == null ? '--' : nm)
