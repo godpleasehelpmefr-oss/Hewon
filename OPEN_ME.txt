@@ -435,3 +435,18 @@ M. v10 MOMENTUM-ONLY EDGE (28 Sep ~11:15 IST) — dip untouched by design.
      the market moves and bleeds no faster when it doesn't.
    Suites all green: v6 14/14, v7 12/12, exit-cross 12/12, v8 9/9, v9 8/8,
    v10 13/13, UI 11/11. Bundle rebuilt + atomic commit; live at next handoff.
+
+N. HARD AUDIT FIXES (28 Sep ~12:00 IST), commit-of-record follows:
+   CRITICAL FIND: sync.yml decrypts ROOT engine.enc.json; v8/v9/v10 bundles had
+   been committed to stealth/runner/ only -> live engine would have stayed v7
+   forever. Fixed 11:47 (0fe7be03 put v10 at the root path). THIS round is the
+   first that can boot v8+v9+v10+v11.
+   v11-audit: ENGINE_BUILD label v10-momedge (probe can prove live build);
+   MOM desc no longer says SL -35%; duplicate build: key removed; hunt log
+   denominators /10; liveTest AUTO-RESTARTS when a new build boots over a
+   finished batch (the cold-era FAIL judged v7 — every build re-judges itself).
+   build_viewer3.js gained the strategy-literal + secret scan gate (closed the
+   last open cleanup item). Stale docs w/x/y removed from the public repo.
+   PAT expiry 2026-10-04 (affects my deploys only; runner uses its own token).
+   AUDIT REPORT: /home/user/AUDIT.md — full beginning-to-now review + the
+   real-money verdict.
