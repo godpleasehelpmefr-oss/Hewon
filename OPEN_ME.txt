@@ -474,3 +474,18 @@ O. REAL-MONEY PHASE PREP — v12-shadow (28 Sep ~12:40 IST)
    USER ACTION NEEDED (one, 2 minutes, before Oct 4): mint a fresh fine-grained
    PAT (repo contents r/w) and paste it once — the current deploy token expires
    2026-10-04 20:15 IST. The ENGINE needs nothing from you (own token+secrets).
+
+=== §Q. v13-board — the honest answer to "80% win rate" (2026-09-28) ===
+Asked for 80% of calls hitting 2x. Data verdict on the live 30 calls: NO honest filter
+reaches it — tightening momentum/spike thresholds LOWERED the rate (best: 40% at n=5).
+Signal strength does not decide 2x; the market regime does (hot window 8/16 = 50%,
+cold window 0/14). The 80% promise is the scam-channel playbook (delete losers after
+the fact); this engine will never print faked numbers.
+What shipped instead:
+  - every call row tagged 🔥 (market carrying coins: a 2x+ within prior 6h) / ❄️ (cold)
+  - scoreboard headline: 💰 Wallet (money metric) — % green on coins actually TRADED
+    (9 of 30 calls took money; 21 got $0) with avg loss capped — this is the number
+    that compounds; the call board stays the full watchlist, and the 2x+ filter chip
+    already shows only winners.
+  - entries/exits UNCHANGED (validated rule); no trading logic touched.
+Gate status unchanged: see §O. Real money still NO until gates pass.

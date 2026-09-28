@@ -299,6 +299,13 @@ function clusterTokens(c) {
   const k = symKey(c.symbol); if (!k) return [];
   return [...new Set((state.calls || []).filter((x) => symKey(x.symbol) === k).map((x) => x.token))];
 }
+// v13: regime tag — did the market carry ANY coin to 2x+ in the 6h before this call? (computed from the snapshot, no server needed)
+function regimeTag(c) {
+  try {
+    const hot = (state.calls || []).some((o) => o !== c && o.callTime < c.callTime && o.callTime >= c.callTime - 6 * 3600000 && Number(o.peakPrice) / Number(o.callPrice) >= 2);
+    return hot ? '🔥' : '❄️';
+  } catch (e) { return ''; }
+}
 function callRow(c, sel) {
   const xNow = pxRatio(c.lastPrice, c.callPrice), xPeak = xOf(c);
   const stale = now() - c.lastUpdate > 600000;
@@ -311,7 +318,7 @@ function callRow(c, sel) {
   else if (!stale) badge = '<span class="badge live">LIVE</span>';
   const xCls = (x) => (x >= 10 ? 'g' : x >= 2 ? 'c' : x >= 1 ? '' : 'r');
   return `<tr class="call ${sel ? 'sel' : ''}" onclick="selectCall('${esc(String(c.id))}')">
-    <td><div class="tk">${icoEl(c)}<div><div class="sym">${esc(c.symbol)}${badge}${clBadge}${c.testBatch ? ' <span class="badge testb">TEST</span>' : ''}</div><div class="nm" title="${esc(c.token)}">${esc(c.name)}</div></div></div></td>
+    <td><div class="tk">${icoEl(c)}<div><div class="sym">${regimeTag(c)} ${esc(c.symbol)}${badge}${clBadge}${c.testBatch ? ' <span class="badge testb">TEST</span>' : ''}</div><div class="nm" title="${esc(c.token)}">${esc(c.name)}</div></div></div></td>
     <td class="age">${timeAgo(c.callTime)}</td>
     <td class="num">${fmtBig(c.mcap)}</td>
     <td class="num">${fmtBig(c.vol5m)}</td>
@@ -349,6 +356,7 @@ function renderStrip() {
     <div class="pill">This hour: <span class="big"><b>${lastHour.length}</b> calls</span> · <span class="big g">${lastHour.length ? Math.round(100 * h1 / lastHour.length) : 0}%</span> hit 2x+</div>
     <div class="pill">Today: <span class="big"><b>${today.length}</b> calls</span> · <span class="big g">${today.length ? Math.round(100 * d1 / today.length) : 0}%</span> hit 2x+</div>
     <div class="pill">All-time: <b>${total}</b> calls · <span class="big g"><b>${total ? Math.round(100 * x2 / total) : 0}%</b></span> 2x+ (${x2})</div>
+    ${(() => { const tr = (state.agents || []).flatMap((a) => a.trades || []); if (!tr.length) return ''; const wins = tr.filter((t) => t.pnl > 0).length; const L = tr.filter((t) => t.pnl <= 0); const al = L.length ? Math.abs(L.reduce((x, t) => x + t.pnl, 0) / L.length) : 0; return `<div class="pill">💰 Wallet (money metric): <span class="big g"><b>${Math.round(100 * wins / tr.length)}%</b></span> green (${wins}/${tr.length} trades) · avg loss <b>$${al.toFixed(2)}</b>, capped</div>`; })()}
     <div class="pill">5x+: <span class="big c"><b>${x5}</b></span> · 10x+: <b>${x10}</b></div>
     <div class="pill">Top call: <span class="big a"><b>${bestC ? esc(bestC.symbol) + ' ' + (xOf(bestC)).toFixed(1) + 'x' : '—'}</b></span></div>
     <div class="pill">Tracked 5m vol: <b>${fmtBig(vol)}</b></div>
