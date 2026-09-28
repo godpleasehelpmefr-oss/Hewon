@@ -450,3 +450,27 @@ N. HARD AUDIT FIXES (28 Sep ~12:00 IST), commit-of-record follows:
    PAT expiry 2026-10-04 (affects my deploys only; runner uses its own token).
    AUDIT REPORT: /home/user/AUDIT.md — full beginning-to-now review + the
    real-money verdict.
+
+O. REAL-MONEY PHASE PREP — v12-shadow (28 Sep ~12:40 IST)
+   The audit's gate order, executed. v12 ships ZERO signing code; it builds the
+   evidence base real money requires:
+   1) SHADOW QUOTES: every paper fill AND sell is re-priced via a live Jupiter
+      USDC->token->USDC round trip at the same notional (decimals-free). The
+      divergence vs the paper fee+slip model is recorded (cap 200) in state
+      (field: shadow). Gate 3 = 50+ shadow trades, mean |div| < 2%.
+   2) RUGCHECK AUTO-GATE: before any arm trades a staged fill, the token's
+      rugcheck report is fetched (10m cache). Veto on: score >= 1000, live
+      mint/freeze authority, top-10 holders > 50%, LP locked < 50%. Unreachable
+      API = allowed (status quo), logged. Veto trail in state (rugVetoes).
+   3) DAILY LOSS KILL-SWITCH: an arm that realizes -25% of its day-start equity
+      (IST day) cannot open new positions until the next day. Paper now, real
+      later, same switch.
+   Suites: v6 14/14 (incl. new veto check), v12 10/10, rest green.
+   REMAINING GATES (audit): 7+ live days on v12 through both eras w/ invariants;
+   liveTest auto-batch verdict; shadow >=50 trades <2% div; THEN and only then
+   the execution module (wallet key in Actions secrets, pinned deps, per-trade
+   cap, kill-switch wired to real orders) is even designed. First real size
+   $25-50/arm, scale at milestones.
+   USER ACTION NEEDED (one, 2 minutes, before Oct 4): mint a fresh fine-grained
+   PAT (repo contents r/w) and paste it once — the current deploy token expires
+   2026-10-04 20:15 IST. The ENGINE needs nothing from you (own token+secrets).
