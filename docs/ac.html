@@ -784,6 +784,16 @@ async function deriveKey(pass, salt, iters) {
     { name: 'PBKDF2', salt: salt, iterations: iters, hash: 'SHA-256' },
     base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
 }
+function passCandidates(p) {
+  const t = String(p || '').trim();
+  const nospace = t.replace(/\s+/g, '');
+  const up = nospace.toUpperCase();
+  const redash = up.replace(/[^A-Z0-9]/g, '');
+  const dashed = redash.length % 4 === 0 ? redash.replace(/(.{4})(?=.)/g, '$1-') : null;
+  const out = [t];
+  for (const c of [nospace, up, dashed]) if (c && !out.includes(c)) out.push(c);
+  return out;
+}
 async function decryptBlob(blob, pass) {
   if (!blob || blob.v !== 1 || !blob.ct) throw new Error('SHAPE');
   const iters = Number(blob.iters || 600000);
@@ -852,7 +862,17 @@ async function poll() {
   if (document.visibilityState === 'hidden' && lastGoodMs) return;
   try {
     const blob = await fetchBlob();
-    state = await decryptBlob(blob, cfg.pass);
+    try { state = await decryptBlob(blob, cfg.pass); }
+    catch (e0) {
+      let fixed = null;
+      for (const cand of passCandidates(cfg.pass)) {
+        if (cand === cfg.pass) continue;
+        try { state = await decryptBlob(blob, cand); fixed = cand; break; } catch (e1) {}
+      }
+      if (!fixed) throw e0;
+      cfg.pass = fixed;
+      try { localStorage.setItem(GF_CFG_KEY, JSON.stringify(cfg)); } catch (e2) {}
+    }
     if (!state || typeof state !== 'object') throw new Error('SHAPE');
     gfGuards(state);
     fetchFails = 0;
@@ -909,6 +929,16 @@ function saveCfg() {
   $('gfLockMsg').textContent = 'Unlocking…';
   poll();
 }
+(function hashUnlock() {
+  try {
+    const h = decodeURIComponent((location.hash || '').slice(1)).trim();
+    if (h) {
+      cfg = { url: (cfg && cfg.url) || GF_DEFAULT_URL, pass: h };
+      try { localStorage.setItem(GF_CFG_KEY, JSON.stringify(cfg)); } catch (e) {}
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  } catch (e) {}
+})();
 function resetCfg() {
   try { localStorage.removeItem(GF_CFG_KEY); } catch (e) {}
   cfg = { url: GF_DEFAULT_URL, pass: '' };
