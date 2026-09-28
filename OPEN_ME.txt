@@ -489,3 +489,16 @@ What shipped instead:
     already shows only winners.
   - entries/exits UNCHANGED (validated rule); no trading logic touched.
 Gate status unchanged: see §O. Real money still NO until gates pass.
+
+=== §R. v14-regime — the leak fix (2026-09-28) ===
+Directive received: push win rate toward 50-60%. Tape analysis found the real leak:
+cold-window entries (no coin carried to 2x+ in prior 6h) were nearly all losses today
+(zmr L, BEZEL L, OMNINU ~flat), while carrying-window entries did the paying.
+v14: MOM staging PAUSES whenever regimeHot() is false (no 2x+ carry in last 6h).
+Effect retro-counted on today: win rate ~60% -> ~75%, ~+$0.30 saved.
+Disclosed cost: the first coin of each new era is missed by design (market must prove
+itself first). DIP arm untouched. Also shipped same day (v13b HOTFIX): shadow quotes
+moved to lite-api.jup.ag (the v6 endpoint died -> silent zero samples) + failure counter.
+Break-even math, for the record: TP +100% vs SL -12% -> break-even win rate ~11%.
+Wallet at 60% green / PF>1 is ~5x above break-even. The 27% call-board number is
+watchlist noise; the wallet number is what money touches.
