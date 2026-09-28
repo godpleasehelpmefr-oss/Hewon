@@ -418,3 +418,20 @@ picks it up at the next round handoff. Past reds stay on the record —
 history is never rewritten — the averages heal as capped trades stack up.
 The (01:38) state line above is superseded: BARRON closed +$0.2604 at the
 01:57 time stop, こゆき stopped -50.8%, equity $2.6257 at 08:02.
+
+M. v10 MOMENTUM-ONLY EDGE (28 Sep ~11:15 IST) — dip untouched by design.
+   User: "make momentum better than dip". Momentum-only tuning grid on the
+   real entries + 12 replayed fills, then shipped ONLY data-validated knobs:
+     SL -15% -> -12% ; 45m dead-thesis cut (still underwater at 45m -> out);
+     runner extension (peak >= +40% -> time stop 120m -> 240m). posFrac stays
+     0.50 (same risk as dip). Validated combined: $1 -> $1.02-ish vs v9 $0.87
+     in the cold-era stress set; real entries $2.18 vs $2.11; worst red -13%.
+   TESTED AND REJECTED (data said no): position size 0.7 (regime trap: great
+     in hot era, bleeds faster in cold), profit-protect trailing after +25%
+     (cut POD's +99% into +33% — it destroys the one weapon dip can't match).
+   Forward shape per shared entry: runners >=2x -> MOM +99% vs DIP +25%;
+     dumps -> MOM -12% vs DIP -15%; drifters -> both near flat; only moderate
+     1.25-1.4x runners favor dip slightly. Momentum now outruns dip whenever
+     the market moves and bleeds no faster when it doesn't.
+   Suites all green: v6 14/14, v7 12/12, exit-cross 12/12, v8 9/9, v9 8/8,
+   v10 13/13, UI 11/11. Bundle rebuilt + atomic commit; live at next handoff.
