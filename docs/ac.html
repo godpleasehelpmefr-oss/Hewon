@@ -163,6 +163,8 @@
     </div>
   </header>
 
+  <div id="verBanner" style="margin:0 0 10px 0;padding:10px 14px;background:#10141c;border:1px solid #2dd4bf55;border-radius:10px;font-size:14px;color:#d8e0ec">LIVE ENGINE: <b style="color:#2dd4bf">—</b></div>
+
   <div id="srcNote" style="display:none;font:11px ui-monospace,Menlo,monospace;color:#7c8ba1;margin:2px 0 0 0"></div>
 <div id="staticNote" style="display:none;font:11px ui-monospace,Menlo,monospace;color:#7c8ba1;margin:2px 0 0 0">Running on GitHub. Trade log, wallets and the live test below are the engine's real record; pause/reset controls need a live host.</div>
 <div id="netWarn" class="banner warn" style="display:none">
@@ -685,6 +687,12 @@ function renderStaged() {
   }).join('');
 }
 function render() {
+  (function () {
+    var vb = $('verBanner'); if (!vb || !state) return;
+    var fuse = state.dayFuse ? ' · <span style="color:#ef4444;font-weight:700">DAY FUSE TRIPPED — new entries halted today</span>' : '';
+    var dp = (state.dayPnl != null) ? ' · today <b style="color:' + (state.dayPnl >= 0 ? '#22c55e' : '#ef4444') + '">' + (state.dayPnl >= 0 ? '+' : '') + Number(state.dayPnl).toFixed(2) + '</b>' : '';
+    vb.innerHTML = 'LIVE ENGINE: <b style="color:#2dd4bf">' + esc(state.build || 'unknown') + '</b>' + fuse + dp;
+  })();
   renderStrip();
   renderStaged();
   renderFeed();
